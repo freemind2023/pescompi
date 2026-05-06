@@ -1,7 +1,7 @@
 'use client';
 import { motion } from 'framer-motion';
 import { RefreshCw, Calendar, Download, Bell, Wifi, WifiOff } from 'lucide-react';
-import { useAnalysisStore, useAlertStore, useAuthStore } from '@/lib/store';
+import { useAlertStore } from '@/lib/store';
 import { useAnalysis } from '@/hooks/useAnalysis';
 import { exportPDF, exportExcel } from '@/lib/api';
 import { timeAgo } from '@/lib/utils';
@@ -18,15 +18,14 @@ export default function Header() {
   const { analysis, isLoading, lastUpdated, dateRange, changeDateRange } = useAnalysis();
   const { refresh } = useAnalysis();
   const { unreadCount, markAllRead } = useAlertStore();
-  const { sessionId } = useAuthStore();
   const [exporting, setExporting] = useState(false);
 
   async function handleExport(format: 'pdf' | 'excel') {
-    if (!sessionId || !analysis) return;
+    if (!analysis) return;
     setExporting(true);
     try {
-      if (format === 'pdf') await exportPDF(sessionId);
-      else await exportExcel(sessionId);
+      if (format === 'pdf') await exportPDF();
+      else await exportExcel();
       toast.success(`${format.toUpperCase()} downloaded!`, {
         style: { background: '#0d0d1e', color: '#00ff88' },
       });

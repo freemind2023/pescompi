@@ -1,29 +1,20 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import { AnalysisRequest, FullAnalysisResponse, ChatMessage } from '@/types';
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-
 function getToken(): string | null {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem('pes_token');
 }
 
-function getSessionId(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('pes_session_id');
-}
-
 const api: AxiosInstance = axios.create({
-  baseURL: `${BASE_URL}/api/v1`,
+  baseURL: '/api',
   timeout: 120000,
   headers: { 'Content-Type': 'application/json' },
 });
 
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = getToken();
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
+  if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
@@ -62,11 +53,6 @@ export async function getCachedAnalysis(): Promise<FullAnalysisResponse | null> 
   }
 }
 
-export async function getAnalysisStatus(sessionId: string): Promise<{ status: string; has_analysis: boolean }> {
-  const { data } = await api.get(`/analysis/status/${sessionId}`);
-  return data;
-}
-
 export async function clearAnalysis(): Promise<void> {
   await api.delete('/analysis/clear');
 }
@@ -74,7 +60,7 @@ export async function clearAnalysis(): Promise<void> {
 // ── Chat ──────────────────────────────────────────────────────────────────────
 
 export function streamChatMessage(
-  sessionId: string,
+  _sessionId: string,
   message: string,
   token: string,
   onChunk: (chunk: string) => void,
@@ -83,13 +69,13 @@ export function streamChatMessage(
 ): () => void {
   const controller = new AbortController();
 
-  fetch(`${BASE_URL}/api/v1/chat/message`, {
+  fetch('/api/chat/message', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ session_id: sessionId, message }),
+    body: JSON.stringify({ message }),
     signal: controller.signal,
   })
     .then(async (res) => {
@@ -102,20 +88,12 @@ export function streamChatMessage(
         const { done, value } = await reader.read();
         if (done) break;
         const text = decoder.decode(value, { stream: true });
-        const lines = text.split('\n');
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const payload = line.slice(6);
-            if (payload === '[DONE]') {
-              onDone();
-              return;
-            }
-            if (payload.startsWith('[ERROR]')) {
-              onError(payload.slice(7));
-              return;
-            }
-            onChunk(payload);
-          }
+        for (const line of text.split('\n')) {
+          if (!line.startsWith('data: ')) continue;
+          const payload = line.slice(6);
+          if (payload === '[DONE]') { onDone(); return; }
+          if (payload.startsWith('[ERROR]')) { onError(payload.slice(7)); return; }
+          onChunk(payload);
         }
       }
       onDone();
@@ -133,7 +111,7 @@ export async function getChatHistory(): Promise<ChatMessage[]> {
 }
 
 export async function clearChatHistory(): Promise<void> {
-  await api.delete('/chat/history');
+  await api.delete('/chat/clear');
 }
 
 export async function getQuickInsight(topic: string): Promise<string> {
@@ -145,7 +123,7 @@ export async function getQuickInsight(topic: string): Promise<string> {
 
 export async function getAlerts(severity?: string): Promise<unknown[]> {
   const params = severity ? `?severity=${severity}` : '';
-  const { data } = await api.get(`/alerts/${params}`);
+  const { data } = await api.get(`/alerts${params}`);
   return data;
 }
 
@@ -161,15 +139,14 @@ export async function getAlertCount(): Promise<Record<string, number>> {
 
 // ── Export ────────────────────────────────────────────────────────────────────
 
-export async function exportPDF(sessionId: string): Promise<void> {
+export async function exportPDF(): Promise<void> {
   const token = getToken();
-  const response = await fetch(`${BASE_URL}/api/v1/export/pdf`, {
+  const response = await fetch('/api/export/pdf', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ session_id: sessionId, format: 'pdf' }),
   });
   if (!response.ok) throw new Error('PDF export failed');
   const blob = await response.blob();
@@ -181,15 +158,14 @@ export async function exportPDF(sessionId: string): Promise<void> {
   URL.revokeObjectURL(url);
 }
 
-export async function exportExcel(sessionId: string): Promise<void> {
+export async function exportExcel(): Promise<void> {
   const token = getToken();
-  const response = await fetch(`${BASE_URL}/api/v1/export/excel`, {
+  const response = await fetch('/api/export/excel', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ session_id: sessionId, format: 'excel' }),
   });
   if (!response.ok) throw new Error('Excel export failed');
   const blob = await response.blob();
